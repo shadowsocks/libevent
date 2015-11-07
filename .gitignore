@@ -75,7 +75,6 @@ cscope*
 /configure
 /configure.lineno
 /depcomp
-/config.h
 /config.h.in
 /install-sh
 /libtool
@@ -83,9 +82,6 @@ cscope*
 /missing
 /stamp-h1
 /stamp-h2
-
-/include/event2/event-config.h
-/evconfig-private.h
 
 /sample/dns-example
 /sample/event-read-fifo
