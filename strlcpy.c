@@ -31,12 +31,11 @@
 static char *rcsid = "$OpenBSD: strlcpy.c,v 1.5 2001/05/13 15:40:16 deraadt Exp $";
 #endif /* LIBC_SCCS and not lint */
 
-#include "event2/event-config.h"
-#include "evconfig-private.h"
-
 #include <sys/types.h>
 
-#ifndef EVENT__HAVE_STRLCPY
+#include "event2/event-config.h"
+
+#ifndef _EVENT_HAVE_STRLCPY
 #include "strlcpy-internal.h"
 
 /*
@@ -45,7 +44,7 @@ static char *rcsid = "$OpenBSD: strlcpy.c,v 1.5 2001/05/13 15:40:16 deraadt Exp 
  * Returns strlen(src); if retval >= siz, truncation occurred.
  */
 size_t
-event_strlcpy_(dst, src, siz)
+_event_strlcpy(dst, src, siz)
 	char *dst;
 	const char *src;
 	size_t siz;

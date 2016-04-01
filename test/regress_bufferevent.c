@@ -24,12 +24,11 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "util-internal.h"
 
 /* The old tests here need assertions to work. */
 #undef NDEBUG
 
-#ifdef _WIN32
+#ifdef WIN32
 #include <winsock2.h>
 #include <windows.h>
 #endif
@@ -38,11 +37,11 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef EVENT__HAVE_SYS_TIME_H
+#ifdef _EVENT_HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
 #include <sys/queue.h>
-#ifndef _WIN32
+#ifndef WIN32
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <signal.h>
@@ -58,7 +57,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#ifdef EVENT__HAVE_ARPA_INET_H
+#ifdef _EVENT_HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
 
@@ -75,9 +74,7 @@
 #include "event2/util.h"
 
 #include "bufferevent-internal.h"
-#include "evthread-internal.h"
-#include "util-internal.h"
-#ifdef _WIN32
+#ifdef WIN32
 #include "iocp-internal.h"
 #endif
 
@@ -123,19 +120,18 @@ errorcb(struct bufferevent *bev, short what, void *arg)
 }
 
 static void
-test_bufferevent_impl(int use_pair, int flush)
+test_bufferevent_impl(int use_pair)
 {
 	struct bufferevent *bev1 = NULL, *bev2 = NULL;
 	char buffer[8333];
 	int i;
-	int expected = 2;
 
 	if (use_pair) {
 		struct bufferevent *pair[2];
 		tt_assert(0 == bufferevent_pair_new(NULL, 0, pair));
 		bev1 = pair[0];
 		bev2 = pair[1];
-		bufferevent_setcb(bev1, readcb, writecb, errorcb, bev1);
+		bufferevent_setcb(bev1, readcb, writecb, errorcb, NULL);
 		bufferevent_setcb(bev2, readcb, writecb, errorcb, NULL);
 		tt_int_op(bufferevent_getfd(bev1), ==, -1);
 		tt_ptr_op(bufferevent_get_underlying(bev1), ==, NULL);
@@ -150,18 +146,6 @@ test_bufferevent_impl(int use_pair, int flush)
 		tt_ptr_op(bufferevent_pair_get_partner(bev2), ==, NULL);
 	}
 
-	{
-		/* Test getcb. */
-		bufferevent_data_cb r, w;
-		bufferevent_event_cb e;
-		void *a;
-		bufferevent_getcb(bev1, &r, &w, &e, &a);
-		tt_ptr_op(r, ==, readcb);
-		tt_ptr_op(w, ==, writecb);
-		tt_ptr_op(e, ==, errorcb);
-		tt_ptr_op(a, ==, use_pair ? bev1 : NULL);
-	}
-
 	bufferevent_disable(bev1, EV_READ);
 	bufferevent_enable(bev2, EV_READ);
 
@@ -172,179 +156,30 @@ test_bufferevent_impl(int use_pair, int flush)
 		buffer[i] = i;
 
 	bufferevent_write(bev1, buffer, sizeof(buffer));
-	if (flush >= 0) {
-		tt_int_op(bufferevent_flush(bev1, EV_WRITE, flush), >=, 0);
-	}
 
 	event_dispatch();
 
-	bufferevent_free(bev2);
-	tt_ptr_op(bufferevent_pair_get_partner(bev1), ==, NULL);
 	bufferevent_free(bev1);
+	tt_ptr_op(bufferevent_pair_get_partner(bev2), ==, NULL);
+	bufferevent_free(bev2);
 
-	/** Only pair call errorcb for BEV_FINISHED */
-	if (use_pair && flush == BEV_FINISHED) {
-		expected = -1;
-	}
-	if (test_ok != expected)
+	if (test_ok != 2)
 		test_ok = 0;
 end:
 	;
 }
 
-static void test_bufferevent(void) { test_bufferevent_impl(0, -1); }
-static void test_bufferevent_pair(void) { test_bufferevent_impl(1, -1); }
-
-static void test_bufferevent_flush_normal(void) { test_bufferevent_impl(0, BEV_NORMAL); }
-static void test_bufferevent_flush_flush(void) { test_bufferevent_impl(0, BEV_FLUSH); }
-static void test_bufferevent_flush_finished(void) { test_bufferevent_impl(0, BEV_FINISHED); }
-
-static void test_bufferevent_pair_flush_normal(void) { test_bufferevent_impl(1, BEV_NORMAL); }
-static void test_bufferevent_pair_flush_flush(void) { test_bufferevent_impl(1, BEV_FLUSH); }
-static void test_bufferevent_pair_flush_finished(void) { test_bufferevent_impl(1, BEV_FINISHED); }
-
-#if defined(EVTHREAD_USE_PTHREADS_IMPLEMENTED)
-/**
- * Trace lock/unlock/alloc/free for locks.
- * (More heavier then evthread_debug*)
- */
-typedef struct
+static void
+test_bufferevent(void)
 {
-	void *lock;
-	enum {
-		ALLOC, FREE,
-	} status;
-	size_t locked /** allow recursive locking */;
-} lock_wrapper;
-struct lock_unlock_base
-{
-	/* Original callbacks */
-	struct evthread_lock_callbacks cbs;
-	/* Map of locks */
-	lock_wrapper *locks;
-	size_t nr_locks;
-} lu_base = {
-	.locks = NULL,
-};
-
-static lock_wrapper *lu_find(void *lock_)
-{
-	size_t i;
-	for (i = 0; i < lu_base.nr_locks; ++i) {
-		lock_wrapper *lock = &lu_base.locks[i];
-		if (lock->lock == lock_)
-			return lock;
-	}
-	return NULL;
+	test_bufferevent_impl(0);
 }
 
-static void *trace_lock_alloc(unsigned locktype)
+static void
+test_bufferevent_pair(void)
 {
-	void *lock;
-	++lu_base.nr_locks;
-	lu_base.locks = realloc(lu_base.locks,
-		sizeof(lock_wrapper) * lu_base.nr_locks);
-	lock = lu_base.cbs.alloc(locktype);
-	lu_base.locks[lu_base.nr_locks - 1] = (lock_wrapper){ lock, ALLOC, 0 };
-	return lock;
+	test_bufferevent_impl(1);
 }
-static void trace_lock_free(void *lock_, unsigned locktype)
-{
-	lock_wrapper *lock = lu_find(lock_);
-	if (!lock || lock->status == FREE || lock->locked) {
-		TT_FAIL(("lock: free error"));
-	} else {
-		lock->status = FREE;
-		lu_base.cbs.free(lock_, locktype);
-	}
-}
-static int trace_lock_lock(unsigned mode, void *lock_)
-{
-	lock_wrapper *lock = lu_find(lock_);
-	if (!lock || lock->status == FREE) {
-		TT_FAIL(("lock: lock error"));
-		return -1;
-	} else {
-		++lock->locked;
-		return lu_base.cbs.lock(mode, lock_);
-	}
-}
-static int trace_lock_unlock(unsigned mode, void *lock_)
-{
-	lock_wrapper *lock = lu_find(lock_);
-	if (!lock || lock->status == FREE || !lock->locked) {
-		TT_FAIL(("lock: unlock error"));
-		return -1;
-	} else {
-		--lock->locked;
-		return lu_base.cbs.unlock(mode, lock_);
-	}
-}
-static void lock_unlock_free_thread_cbs(void)
-{
-	event_base_free(NULL);
-
-	if (libevent_tests_running_in_debug_mode)
-		libevent_global_shutdown();
-
-	/** drop immutable flag */
-	evthread_set_lock_callbacks(NULL);
-	/** avoid calling of event_global_setup_locks_() for new cbs */
-	libevent_global_shutdown();
-	/** drop immutable flag for non-debug ops (since called after shutdown) */
-	evthread_set_lock_callbacks(NULL);
-}
-
-static int use_lock_unlock_profiler(void)
-{
-	struct evthread_lock_callbacks cbs = {
-		EVTHREAD_LOCK_API_VERSION,
-		EVTHREAD_LOCKTYPE_RECURSIVE,
-		trace_lock_alloc,
-		trace_lock_free,
-		trace_lock_lock,
-		trace_lock_unlock,
-	};
-	memcpy(&lu_base.cbs, evthread_get_lock_callbacks(),
-		sizeof(lu_base.cbs));
-	{
-		lock_unlock_free_thread_cbs();
-
-		evthread_set_lock_callbacks(&cbs);
-		/** re-create debug locks correctly */
-		evthread_enable_lock_debugging();
-
-		event_init();
-	}
-	return 0;
-}
-static void free_lock_unlock_profiler(struct basic_test_data *data)
-{
-	/** fix "held_by" for kqueue */
-	evthread_set_lock_callbacks(NULL);
-
-	lock_unlock_free_thread_cbs();
-	free(lu_base.locks);
-	data->base = NULL;
-}
-
-static void test_bufferevent_pair_release_lock(void *arg)
-{
-	struct basic_test_data *data = arg;
-	use_lock_unlock_profiler();
-	{
-		struct bufferevent *pair[2];
-		if (!bufferevent_pair_new(NULL, BEV_OPT_THREADSAFE, pair)) {
-			bufferevent_free(pair[0]);
-			bufferevent_free(pair[1]);
-		} else
-			tt_abort_perror("bufferevent_pair_new");
-	}
-	free_lock_unlock_profiler(data);
-end:
-	;
-}
-#endif
 
 /*
  * test watermarks and bufferevent
@@ -394,7 +229,6 @@ test_bufferevent_watermarks_impl(int use_pair)
 {
 	struct bufferevent *bev1 = NULL, *bev2 = NULL;
 	char buffer[65000];
-	size_t low, high;
 	int i;
 	test_ok = 0;
 
@@ -414,34 +248,15 @@ test_bufferevent_watermarks_impl(int use_pair)
 	bufferevent_disable(bev1, EV_READ);
 	bufferevent_enable(bev2, EV_READ);
 
-	/* By default, low watermarks are set to 0 */
-	bufferevent_getwatermark(bev1, EV_READ, &low, NULL);
-	tt_int_op(low, ==, 0);
-	bufferevent_getwatermark(bev2, EV_WRITE, &low, NULL);
-	tt_int_op(low, ==, 0);
-
 	for (i = 0; i < (int)sizeof(buffer); i++)
 		buffer[i] = (char)i;
 
 	/* limit the reading on the receiving bufferevent */
 	bufferevent_setwatermark(bev2, EV_READ, 10, 20);
 
-	bufferevent_getwatermark(bev2, EV_READ, &low, &high);
-	tt_int_op(low, ==, 10);
-	tt_int_op(high, ==, 20);
-
 	/* Tell the sending bufferevent not to notify us till it's down to
 	   100 bytes. */
 	bufferevent_setwatermark(bev1, EV_WRITE, 100, 2000);
-
-	bufferevent_getwatermark(bev1, EV_WRITE, &low, &high);
-	tt_int_op(low, ==, 100);
-	tt_int_op(high, ==, 2000);
-
-	{
-	int r = bufferevent_getwatermark(bev1, EV_WRITE | EV_READ, &low, &high);
-	tt_int_op(r, !=, 0);
-	}
 
 	bufferevent_write(bev1, buffer, sizeof(buffer));
 
@@ -591,7 +406,6 @@ sender_writecb(struct bufferevent *bev, void *ctx)
 {
 	if (evbuffer_get_length(bufferevent_get_output(bev)) == 0) {
 		bufferevent_disable(bev,EV_READ|EV_WRITE);
-		TT_BLATHER(("Flushed %d: freeing it.", (int)bufferevent_getfd(bev)));
 		bufferevent_free(bev);
 	}
 }
@@ -603,10 +417,8 @@ sender_errorcb(struct bufferevent *bev, short what, void *ctx)
 }
 
 static int bufferevent_connect_test_flags = 0;
-static int bufferevent_trigger_test_flags = 0;
 static int n_strings_read = 0;
 static int n_reads_invoked = 0;
-static int n_events_invoked = 0;
 
 #define TEST_STR "Now is the time for all good events to signal for " \
 	"the good of their protocol"
@@ -626,31 +438,6 @@ end:
 	;
 }
 
-static int
-fake_listener_create(struct sockaddr_in *localhost)
-{
-	struct sockaddr *sa = (struct sockaddr *)localhost;
-	evutil_socket_t fd = -1;
-	ev_socklen_t slen = sizeof(*localhost);
-
-	memset(localhost, 0, sizeof(*localhost));
-	localhost->sin_port = 0; /* have the kernel pick a port */
-	localhost->sin_addr.s_addr = htonl(0x7f000001L);
-	localhost->sin_family = AF_INET;
-
-	/* bind, but don't listen or accept. should trigger
-	   "Connection refused" reliably on most platforms. */
-	fd = socket(localhost->sin_family, SOCK_STREAM, 0);
-	tt_assert(fd >= 0);
-	tt_assert(bind(fd, sa, slen) == 0);
-	tt_assert(getsockname(fd, sa, &slen) == 0);
-
-	return fd;
-
-end:
-	return -1;
-}
-
 static void
 reader_eventcb(struct bufferevent *bev, short what, void *ctx)
 {
@@ -661,37 +448,24 @@ reader_eventcb(struct bufferevent *bev, short what, void *ctx)
 		return;
 	}
 	if (what & BEV_EVENT_CONNECTED) {
-		TT_BLATHER(("connected on %d", (int)bufferevent_getfd(bev)));
 		bufferevent_enable(bev, EV_READ);
 	}
 	if (what & BEV_EVENT_EOF) {
 		char buf[512];
 		size_t n;
 		n = bufferevent_read(bev, buf, sizeof(buf)-1);
-		tt_int_op(n, >=, 0);
 		buf[n] = '\0';
 		tt_str_op(buf, ==, TEST_STR);
 		if (++n_strings_read == 2)
 			event_base_loopexit(base, NULL);
-		TT_BLATHER(("EOF on %d: %d strings read.",
-			(int)bufferevent_getfd(bev), n_strings_read));
 	}
 end:
 	;
 }
 
 static void
-reader_eventcb_simple(struct bufferevent *bev, short what, void *ctx)
-{
-	TT_BLATHER(("Read eventcb simple invoked on %d.",
-		(int)bufferevent_getfd(bev)));
-	n_events_invoked++;
-}
-
-static void
 reader_readcb(struct bufferevent *bev, void *ctx)
 {
-	TT_BLATHER(("Read invoked on %d.", (int)bufferevent_getfd(bev)));
 	n_reads_invoked++;
 }
 
@@ -718,11 +492,11 @@ test_bufferevent_connect(void *arg)
 		be_flags |= BEV_OPT_THREADSAFE;
 	}
 	bufferevent_connect_test_flags = be_flags;
-#ifdef _WIN32
+#ifdef WIN32
 	if (!strcmp((char*)data->setup_data, "unset_connectex")) {
 		struct win32_extension_fns *ext =
 		    (struct win32_extension_fns *)
-		    event_get_win32_extension_fns_();
+		    event_get_win32_extension_fns();
 		ext->ConnectEx = NULL;
 	}
 #endif
@@ -774,45 +548,6 @@ end:
 }
 
 static void
-test_bufferevent_connect_fail_eventcb(void *arg)
-{
-	struct basic_test_data *data = arg;
-	int flags = BEV_OPT_CLOSE_ON_FREE | (long)data->setup_data;
-	struct bufferevent *bev = NULL;
-	struct evconnlistener *lev = NULL;
-	struct sockaddr_in localhost;
-	ev_socklen_t slen = sizeof(localhost);
-	evutil_socket_t fake_listener = -1;
-
-	fake_listener = fake_listener_create(&localhost);
-
-	tt_int_op(n_events_invoked, ==, 0);
-
-	bev = bufferevent_socket_new(data->base, -1, flags);
-	tt_assert(bev);
-	bufferevent_setcb(bev, reader_readcb, reader_readcb,
-		reader_eventcb_simple, data->base);
-	bufferevent_enable(bev, EV_READ|EV_WRITE);
-	tt_int_op(n_events_invoked, ==, 0);
-	tt_int_op(n_reads_invoked, ==, 0);
-	/** @see also test_bufferevent_connect_fail() */
-	bufferevent_socket_connect(bev, (struct sockaddr *)&localhost, slen);
-	tt_int_op(n_events_invoked, ==, 0);
-	tt_int_op(n_reads_invoked, ==, 0);
-	event_base_dispatch(data->base);
-	tt_int_op(n_events_invoked, ==, 1);
-	tt_int_op(n_reads_invoked, ==, 0);
-
-end:
-	if (lev)
-		evconnlistener_free(lev);
-	if (bev)
-		bufferevent_free(bev);
-	if (fake_listener >= 0)
-		evutil_closesocket(fake_listener);
-}
-
-static void
 want_fail_eventcb(struct bufferevent *bev, short what, void *ctx)
 {
 	struct event_base *base = ctx;
@@ -822,8 +557,7 @@ want_fail_eventcb(struct bufferevent *bev, short what, void *ctx)
 	if (what & BEV_EVENT_ERROR) {
 		s = bufferevent_getfd(bev);
 		err = evutil_socket_error_to_string(evutil_socket_geterror(s));
-		TT_BLATHER(("connection failure on "EV_SOCK_FMT": %s",
-			EV_SOCK_ARG(s), err));
+		TT_BLATHER(("connection failure on %d: %s", s, err));
 		test_ok = 1;
 	} else {
 		TT_FAIL(("didn't fail? what %hd", what));
@@ -845,25 +579,36 @@ close_socket_cb(evutil_socket_t fd, short what, void *arg)
 static void
 test_bufferevent_connect_fail(void *arg)
 {
-	struct basic_test_data *data = (struct basic_test_data *)arg;
+	struct basic_test_data *data = arg;
 	struct bufferevent *bev=NULL;
+	struct sockaddr_in localhost;
+	struct sockaddr *sa = (struct sockaddr*)&localhost;
+	evutil_socket_t fake_listener = -1;
+	ev_socklen_t slen = sizeof(localhost);
 	struct event close_listener_event;
 	int close_listener_event_added = 0;
 	struct timeval one_second = { 1, 0 };
-	struct sockaddr_in localhost;
-	ev_socklen_t slen = sizeof(localhost);
-	evutil_socket_t fake_listener = -1;
 	int r;
 
 	test_ok = 0;
 
-	fake_listener = fake_listener_create(&localhost);
+	memset(&localhost, 0, sizeof(localhost));
+	localhost.sin_port = 0; /* have the kernel pick a port */
+	localhost.sin_addr.s_addr = htonl(0x7f000001L);
+	localhost.sin_family = AF_INET;
+
+	/* bind, but don't listen or accept. should trigger
+	   "Connection refused" reliably on most platforms. */
+	fake_listener = socket(localhost.sin_family, SOCK_STREAM, 0);
+	tt_assert(fake_listener >= 0);
+	tt_assert(bind(fake_listener, sa, slen) == 0);
+	tt_assert(getsockname(fake_listener, sa, &slen) == 0);
 	bev = bufferevent_socket_new(data->base, -1,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	tt_assert(bev);
 	bufferevent_setcb(bev, NULL, NULL, want_fail_eventcb, data->base);
 
-	r = bufferevent_socket_connect(bev, (struct sockaddr *)&localhost, slen);
+	r = bufferevent_socket_connect(bev, sa, slen);
 	/* XXXX we'd like to test the '0' case everywhere, but FreeBSD tells
 	 * detects the error immediately, which is not really wrong of it. */
 	tt_want(r == 0 || r == -1);
@@ -1007,8 +752,8 @@ test_bufferevent_timeouts(void *arg)
 	bufferevent_set_timeouts(bev2, &tv_r, &tv_w);
 	bufferevent_enable(bev2, EV_WRITE);
 
-	tv_r.tv_sec = 0;
-	tv_r.tv_usec = 350000;
+	tv_r.tv_sec = 1;
+	tv_r.tv_usec = 0;
 
 	event_base_loopexit(data->base, &tv_r);
 	event_base_dispatch(data->base);
@@ -1032,166 +777,10 @@ end:
 		bufferevent_free(bev2);
 }
 
-static void
-trigger_failure_cb(evutil_socket_t fd, short what, void *ctx)
-{
-	TT_FAIL(("The triggered callback did not fire or the machine is really slow (try increasing timeout)."));
-}
-
-static void
-trigger_eventcb(struct bufferevent *bev, short what, void *ctx)
-{
-	struct event_base *base = ctx;
-	if (what == ~0) {
-		TT_BLATHER(("Event successfully triggered."));
-		event_base_loopexit(base, NULL);
-		return;
-	}
-	reader_eventcb(bev, what, ctx);
-}
-
-static void
-trigger_readcb_triggered(struct bufferevent *bev, void *ctx)
-{
-	TT_BLATHER(("Read successfully triggered."));
-	n_reads_invoked++;
-	bufferevent_trigger_event(bev, ~0, bufferevent_trigger_test_flags);
-}
-
-static void
-trigger_readcb(struct bufferevent *bev, void *ctx)
-{
-	struct timeval timeout = { 30, 0 };
-	struct event_base *base = ctx;
-	size_t low, high, len;
-	int expected_reads;
-
-	TT_BLATHER(("Read invoked on %d.", (int)bufferevent_getfd(bev)));
-	expected_reads = ++n_reads_invoked;
-
-	bufferevent_setcb(bev, trigger_readcb_triggered, NULL, trigger_eventcb, ctx);
-
-	bufferevent_getwatermark(bev, EV_READ, &low, &high);
-	len = evbuffer_get_length(bufferevent_get_input(bev));
-
-	bufferevent_setwatermark(bev, EV_READ, len + 1, 0);
-	bufferevent_trigger(bev, EV_READ, bufferevent_trigger_test_flags);
-	/* no callback expected */
-	tt_int_op(n_reads_invoked, ==, expected_reads);
-
-	if ((bufferevent_trigger_test_flags & BEV_TRIG_DEFER_CALLBACKS) ||
-	    (bufferevent_connect_test_flags & BEV_OPT_DEFER_CALLBACKS)) {
-		/* will be deferred */
-	} else {
-		expected_reads++;
-	}
-
-	event_base_once(base, -1, EV_TIMEOUT, trigger_failure_cb, NULL, &timeout);
-
-	bufferevent_trigger(bev, EV_READ,
-	    bufferevent_trigger_test_flags | BEV_TRIG_IGNORE_WATERMARKS);
-	tt_int_op(n_reads_invoked, ==, expected_reads);
-
-	bufferevent_setwatermark(bev, EV_READ, low, high);
-end:
-	;
-}
-
-static void
-test_bufferevent_trigger(void *arg)
-{
-	struct basic_test_data *data = arg;
-	struct evconnlistener *lev=NULL;
-	struct bufferevent *bev=NULL;
-	struct sockaddr_in localhost;
-	struct sockaddr_storage ss;
-	struct sockaddr *sa;
-	ev_socklen_t slen;
-
-	int be_flags=BEV_OPT_CLOSE_ON_FREE;
-	int trig_flags=0;
-
-	if (strstr((char*)data->setup_data, "defer")) {
-		be_flags |= BEV_OPT_DEFER_CALLBACKS;
-	}
-	bufferevent_connect_test_flags = be_flags;
-
-	if (strstr((char*)data->setup_data, "postpone")) {
-		trig_flags |= BEV_TRIG_DEFER_CALLBACKS;
-	}
-	bufferevent_trigger_test_flags = trig_flags;
-
-	memset(&localhost, 0, sizeof(localhost));
-
-	localhost.sin_port = 0; /* pick-a-port */
-	localhost.sin_addr.s_addr = htonl(0x7f000001L);
-	localhost.sin_family = AF_INET;
-	sa = (struct sockaddr *)&localhost;
-	lev = evconnlistener_new_bind(data->base, listen_cb, data->base,
-	    LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE,
-	    16, sa, sizeof(localhost));
-	tt_assert(lev);
-
-	sa = (struct sockaddr *)&ss;
-	slen = sizeof(ss);
-	if (regress_get_listener_addr(lev, sa, &slen) < 0) {
-		tt_abort_perror("getsockname");
-	}
-
-	tt_assert(!evconnlistener_enable(lev));
-	bev = bufferevent_socket_new(data->base, -1, be_flags);
-	tt_assert(bev);
-	bufferevent_setcb(bev, trigger_readcb, NULL, trigger_eventcb, data->base);
-
-	bufferevent_enable(bev, EV_READ);
-
-	tt_want(!bufferevent_socket_connect(bev, sa, sizeof(localhost)));
-
-	event_base_dispatch(data->base);
-
-	tt_int_op(n_reads_invoked, ==, 2);
-end:
-	if (lev)
-		evconnlistener_free(lev);
-
-	if (bev)
-		bufferevent_free(bev);
-}
-
-static void
-test_bufferevent_socket_filter_inactive(void *arg)
-{
-	struct basic_test_data *data = arg;
-	struct bufferevent *bev = NULL, *bevf = NULL;
-
-	bev = bufferevent_socket_new(data->base, -1, 0);
-	tt_assert(bev);
-	bevf = bufferevent_filter_new(bev, NULL, NULL, 0, NULL, NULL);
-	tt_assert(bevf);
-
-end:
-	if (bevf)
-		bufferevent_free(bevf);
-	if (bev)
-		bufferevent_free(bev);
-}
-
-
 struct testcase_t bufferevent_testcases[] = {
 
 	LEGACY(bufferevent, TT_ISOLATED),
 	LEGACY(bufferevent_pair, TT_ISOLATED),
-	LEGACY(bufferevent_flush_normal, TT_ISOLATED),
-	LEGACY(bufferevent_flush_flush, TT_ISOLATED),
-	LEGACY(bufferevent_flush_finished, TT_ISOLATED),
-	LEGACY(bufferevent_pair_flush_normal, TT_ISOLATED),
-	LEGACY(bufferevent_pair_flush_flush, TT_ISOLATED),
-	LEGACY(bufferevent_pair_flush_finished, TT_ISOLATED),
-#if defined(EVTHREAD_USE_PTHREADS_IMPLEMENTED)
-	{ "bufferevent_pair_release_lock", test_bufferevent_pair_release_lock,
-	  TT_FORK|TT_ISOLATED|TT_NEED_THREADS|TT_NEED_BASE|TT_LEGACY,
-	  &basic_setup, NULL },
-#endif
 	LEGACY(bufferevent_watermarks, TT_ISOLATED),
 	LEGACY(bufferevent_pair_watermarks, TT_ISOLATED),
 	LEGACY(bufferevent_filters, TT_ISOLATED),
@@ -1218,32 +807,11 @@ struct testcase_t bufferevent_testcases[] = {
 	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)"filter" },
 	{ "bufferevent_timeout_filter_pair", test_bufferevent_timeouts,
 	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)"filter pair" },
-	{ "bufferevent_trigger", test_bufferevent_trigger, TT_FORK|TT_NEED_BASE,
-	  &basic_setup, (void*)"" },
-	{ "bufferevent_trigger_defer", test_bufferevent_trigger,
-	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)"defer" },
-	{ "bufferevent_trigger_postpone", test_bufferevent_trigger,
-	  TT_FORK|TT_NEED_BASE|TT_NEED_THREADS, &basic_setup,
-	  (void*)"postpone" },
-	{ "bufferevent_trigger_defer_postpone", test_bufferevent_trigger,
-	  TT_FORK|TT_NEED_BASE|TT_NEED_THREADS, &basic_setup,
-	  (void*)"defer postpone" },
-#ifdef EVENT__HAVE_LIBZ
+#ifdef _EVENT_HAVE_LIBZ
 	LEGACY(bufferevent_zlib, TT_ISOLATED),
 #else
 	{ "bufferevent_zlib", NULL, TT_SKIP, NULL, NULL },
 #endif
-
-	{ "bufferevent_connect_fail_eventcb_defer",
-	  test_bufferevent_connect_fail_eventcb,
-	  TT_FORK|TT_NEED_BASE, &basic_setup, (void*)BEV_OPT_DEFER_CALLBACKS },
-	{ "bufferevent_connect_fail_eventcb",
-	  test_bufferevent_connect_fail_eventcb,
-	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
-
-	{ "bufferevent_socket_filter_inactive",
-	  test_bufferevent_socket_filter_inactive,
-	  TT_FORK|TT_NEED_BASE, &basic_setup, NULL },
 
 	END_OF_TESTCASES,
 };
@@ -1251,9 +819,6 @@ struct testcase_t bufferevent_testcases[] = {
 struct testcase_t bufferevent_iocp_testcases[] = {
 
 	LEGACY(bufferevent, TT_ISOLATED|TT_ENABLE_IOCP),
-	LEGACY(bufferevent_flush_normal, TT_ISOLATED),
-	LEGACY(bufferevent_flush_flush, TT_ISOLATED),
-	LEGACY(bufferevent_flush_finished, TT_ISOLATED),
 	LEGACY(bufferevent_watermarks, TT_ISOLATED|TT_ENABLE_IOCP),
 	LEGACY(bufferevent_filters, TT_ISOLATED|TT_ENABLE_IOCP),
 	{ "bufferevent_connect", test_bufferevent_connect,
@@ -1271,14 +836,6 @@ struct testcase_t bufferevent_iocp_testcases[] = {
 	{ "bufferevent_connect_nonblocking", test_bufferevent_connect,
 	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup,
 	  (void*)"unset_connectex" },
-
-	{ "bufferevent_connect_fail_eventcb_defer",
-	  test_bufferevent_connect_fail_eventcb,
-	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup,
-	  (void*)BEV_OPT_DEFER_CALLBACKS },
-	{ "bufferevent_connect_fail",
-	  test_bufferevent_connect_fail_eventcb,
-	  TT_FORK|TT_NEED_BASE|TT_ENABLE_IOCP, &basic_setup, NULL },
 
 	END_OF_TESTCASES,
 };

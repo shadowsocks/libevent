@@ -26,17 +26,17 @@
  */
 #include "event2/event-config.h"
 
-#ifdef _WIN32
+#ifdef WIN32
 #include <winsock2.h>
 #else
 #include <unistd.h>
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef EVENT__HAVE_SYS_TIME_H
+#ifdef _EVENT_HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#ifdef EVENT__HAVE_SYS_SOCKET_H
+#ifdef _EVENT_HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
 #include <fcntl.h>
@@ -51,8 +51,8 @@
 #include "event2/event_compat.h"
 #include "event2/util.h"
 
-#ifdef EVENT____func__
-#define __func__ EVENT____func__
+#ifdef _EVENT___func__
+#define __func__ _EVENT___func__
 #endif
 
 evutil_socket_t pair[2];
@@ -85,16 +85,17 @@ main(int argc, char **argv)
 {
 	struct event ev;
 
-#ifdef _WIN32
+#ifdef WIN32
 	WORD wVersionRequested;
 	WSADATA wsaData;
+	int	err;
 
 	wVersionRequested = MAKEWORD(2, 2);
 
-	(void) WSAStartup(wVersionRequested, &wsaData);
+	err = WSAStartup(wVersionRequested, &wsaData);
 #endif
 
-#ifndef _WIN32
+#ifndef WIN32
 	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
 		return (1);
 #endif
