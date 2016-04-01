@@ -23,7 +23,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "evconfig-private.h"
 
 #ifndef _WIN32_WINNT
 /* Minimum required for InitializeCriticalSectionAndSpinCount */
@@ -46,7 +45,7 @@
 #define NOTIFICATION_KEY ((ULONG_PTR)-1)
 
 void
-event_overlapped_init_(struct event_overlapped *o, iocp_callback cb)
+event_overlapped_init(struct event_overlapped *o, iocp_callback cb)
 {
 	memset(o, 0, sizeof(struct event_overlapped));
 	o->cb = cb;
@@ -61,9 +60,9 @@ handle_entry(OVERLAPPED *o, ULONG_PTR completion_key, DWORD nBytes, int ok)
 }
 
 static void
-loop(void *port_)
+loop(void *_port)
 {
-	struct event_iocp_port *port = port_;
+	struct event_iocp_port *port = _port;
 	long ms = port->ms;
 	HANDLE p = port->port;
 
@@ -99,7 +98,7 @@ loop(void *port_)
 }
 
 int
-event_iocp_port_associate_(struct event_iocp_port *port, evutil_socket_t fd,
+event_iocp_port_associate(struct event_iocp_port *port, evutil_socket_t fd,
     ev_uintptr_t key)
 {
 	HANDLE h;
@@ -142,8 +141,6 @@ get_extension_function(SOCKET s, const GUID *which_fn)
 	{0xb5367df2,0xcbac,0x11cf,{0x95,0xca,0x00,0x80,0x5f,0x48,0xa1,0x92}}
 #endif
 
-static int extension_fns_initialized = 0;
-
 static void
 init_extension_functions(struct win32_extension_fns *ext)
 {
@@ -158,14 +155,13 @@ init_extension_functions(struct win32_extension_fns *ext)
 	ext->GetAcceptExSockaddrs = get_extension_function(s,
 	    &getacceptexsockaddrs);
 	closesocket(s);
-
-	extension_fns_initialized = 1;
 }
 
 static struct win32_extension_fns the_extension_fns;
+static int extension_fns_initialized = 0;
 
 const struct win32_extension_fns *
-event_get_win32_extension_fns_(void)
+event_get_win32_extension_fns(void)
 {
 	return &the_extension_fns;
 }
@@ -173,7 +169,7 @@ event_get_win32_extension_fns_(void)
 #define N_CPUS_DEFAULT 2
 
 struct event_iocp_port *
-event_iocp_port_launch_(int n_cpus)
+event_iocp_port_launch(int n_cpus)
 {
 	struct event_iocp_port *port;
 	int i;
@@ -224,7 +220,7 @@ err:
 }
 
 static void
-event_iocp_port_unlock_and_free_(struct event_iocp_port *port)
+_event_iocp_port_unlock_and_free(struct event_iocp_port *port)
 {
 	DeleteCriticalSection(&port->lock);
 	CloseHandle(port->port);
@@ -247,7 +243,7 @@ event_iocp_notify_all(struct event_iocp_port *port)
 }
 
 int
-event_iocp_shutdown_(struct event_iocp_port *port, long waitMsec)
+event_iocp_shutdown(struct event_iocp_port *port, long waitMsec)
 {
 	DWORD ms = INFINITE;
 	int n;
@@ -265,7 +261,7 @@ event_iocp_shutdown_(struct event_iocp_port *port, long waitMsec)
 	n = port->n_live_threads;
 	LeaveCriticalSection(&port->lock);
 	if (n == 0) {
-		event_iocp_port_unlock_and_free_(port);
+		_event_iocp_port_unlock_and_free(port);
 		return 0;
 	} else {
 		return -1;
@@ -273,7 +269,7 @@ event_iocp_shutdown_(struct event_iocp_port *port, long waitMsec)
 }
 
 int
-event_iocp_activate_overlapped_(
+event_iocp_activate_overlapped(
     struct event_iocp_port *port, struct event_overlapped *o,
     ev_uintptr_t key, ev_uint32_t n)
 {
@@ -284,9 +280,9 @@ event_iocp_activate_overlapped_(
 }
 
 struct event_iocp_port *
-event_base_get_iocp_(struct event_base *base)
+event_base_get_iocp(struct event_base *base)
 {
-#ifdef _WIN32
+#ifdef WIN32
 	return base->iocp;
 #else
 	return NULL;

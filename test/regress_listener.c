@@ -23,16 +23,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "util-internal.h"
 
-#ifdef _WIN32
+#ifdef WIN32
 #include <winsock2.h>
 #include <windows.h>
 #endif
 
 #include <sys/types.h>
 
-#ifndef _WIN32
+#ifndef WIN32
 #include <sys/socket.h>
 #include <netinet/in.h>
 # ifdef _XOPEN_SOURCE_EXTENDED
@@ -50,6 +49,7 @@
 #include "regress.h"
 #include "tinytest.h"
 #include "tinytest_macros.h"
+#include "util-internal.h"
 
 static void
 acceptcb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -115,11 +115,11 @@ regress_pick_a_port(void *arg)
 	tt_ptr_op(evconnlistener_get_base(listener2), ==, base);
 
 	fd1 = fd2 = fd3 = -1;
-	evutil_socket_connect_(&fd1, (struct sockaddr*)&ss1, slen1);
-	evutil_socket_connect_(&fd2, (struct sockaddr*)&ss1, slen1);
-	evutil_socket_connect_(&fd3, (struct sockaddr*)&ss2, slen2);
+	evutil_socket_connect(&fd1, (struct sockaddr*)&ss1, slen1);
+	evutil_socket_connect(&fd2, (struct sockaddr*)&ss1, slen1);
+	evutil_socket_connect(&fd3, (struct sockaddr*)&ss2, slen2);
 
-#ifdef _WIN32
+#ifdef WIN32
 	Sleep(100); /* XXXX this is a stupid stopgap. */
 #endif
 	event_base_dispatch(base);

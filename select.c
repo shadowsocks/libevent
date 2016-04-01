@@ -27,21 +27,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "event2/event-config.h"
-#include "evconfig-private.h"
-
-#ifdef EVENT__HAVE_SELECT
-
-#ifdef __APPLE__
-/* Apple wants us to define this if we might ever pass more than
- * FD_SETSIZE bits to select(). */
-#define _DARWIN_UNLIMITED_SELECT
-#endif
 
 #include <sys/types.h>
-#ifdef EVENT__HAVE_SYS_TIME_H
+#ifdef _EVENT_HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#ifdef EVENT__HAVE_SYS_SELECT_H
+#ifdef _EVENT_HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
 #include <sys/queue.h>
@@ -59,7 +50,7 @@
 #include "log-internal.h"
 #include "evmap-internal.h"
 
-#ifndef EVENT__HAVE_FD_MASK
+#ifndef _EVENT_HAVE_FD_MASK
 /* This type is mandatory, but Android doesn't define it. */
 typedef unsigned long fd_mask;
 #endif
@@ -119,9 +110,7 @@ select_init(struct event_base *base)
 		return (NULL);
 	}
 
-	evsig_init_(base);
-
-	evutil_weakrand_seed_(&base->weakrand_seed, 0);
+	evsig_init(base);
 
 	return (sop);
 }
@@ -188,7 +177,7 @@ select_dispatch(struct event_base *base, struct timeval *tv)
 	event_debug(("%s: select reports %d", __func__, res));
 
 	check_selectop(sop);
-	i = evutil_weakrand_range_(&base->weakrand_seed, nfds);
+	i = random() % nfds;
 	for (j = 0; j < nfds; ++j) {
 		if (++i >= nfds)
 			i = 0;
@@ -201,7 +190,7 @@ select_dispatch(struct event_base *base, struct timeval *tv)
 		if (res == 0)
 			continue;
 
-		evmap_io_active_(base, i, res);
+		evmap_io_active(base, i, res);
 	}
 	check_selectop(sop);
 
@@ -338,9 +327,7 @@ select_free_selectop(struct selectop *sop)
 static void
 select_dealloc(struct event_base *base)
 {
-	evsig_dealloc_(base);
+	evsig_dealloc(base);
 
 	select_free_selectop(base->evbase);
 }
-
-#endif /* EVENT__HAVE_SELECT */
