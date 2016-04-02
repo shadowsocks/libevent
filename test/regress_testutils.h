@@ -24,8 +24,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef REGRESS_TESTUTILS_H_INCLUDED_
-#define REGRESS_TESTUTILS_H_INCLUDED_
+#ifndef _TESTUTILS_H
+#define _TESTUTILS_H
 
 #include "event2/dns.h"
 
@@ -34,7 +34,6 @@ struct regress_dns_server_table {
 	const char *anstype;
 	const char *ans;
 	int seen;
-	int lower;
 };
 
 struct evdns_server_port *
@@ -63,5 +62,5 @@ struct sockaddr;
 int regress_get_listener_addr(struct evconnlistener *lev,
     struct sockaddr *sa, ev_socklen_t *socklen);
 
-#endif /* REGRESS_TESTUTILS_H_INCLUDED_ */
+#endif /* _TESTUTILS_H */
 

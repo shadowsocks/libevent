@@ -23,8 +23,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TINYTEST_MACROS_H_INCLUDED_
-#define TINYTEST_MACROS_H_INCLUDED_
+#ifndef _TINYTEST_MACROS_H
+#define _TINYTEST_MACROS_H
 
 /* Helpers for defining statement-like macros */
 #define TT_STMT_BEGIN do {
@@ -51,19 +51,19 @@
 /* Announce a non-failure if we're verbose. */
 #define TT_BLATHER(args)						\
 	TT_STMT_BEGIN							\
-	if (tinytest_get_verbosity_()>1) TT_DECLARE("  OK", args);	\
+	if (_tinytest_get_verbosity()>1) TT_DECLARE("  OK", args);	\
 	TT_STMT_END
 
 #define TT_DIE(args)						\
 	TT_STMT_BEGIN						\
-	tinytest_set_test_failed_();				\
+	_tinytest_set_test_failed();				\
 	TT_GRIPE(args);						\
 	TT_EXIT_TEST_FUNCTION;					\
 	TT_STMT_END
 
 #define TT_FAIL(args)				\
 	TT_STMT_BEGIN						\
-	tinytest_set_test_failed_();				\
+	_tinytest_set_test_failed();				\
 	TT_GRIPE(args);						\
 	TT_STMT_END
 
@@ -74,7 +74,7 @@
 #define tt_abort() TT_DIE(("%s", "(Failed.)"))
 
 /* Fail but do not abort the current test for the reason in msg. */
-#define tt_failprint_f(msg) TT_FAIL(msg)
+#define tt_fail_printf(msg) TT_FAIL(msg)
 #define tt_fail_perror(op) TT_FAIL(("%s: %s [%d]",(op),strerror(errno), errno))
 #define tt_fail_msg(msg) TT_FAIL(("%s", msg))
 #define tt_fail() TT_FAIL(("%s", "(Failed.)"))
@@ -82,14 +82,14 @@
 /* End the current test, and indicate we are skipping it. */
 #define tt_skip()						\
 	TT_STMT_BEGIN						\
-	tinytest_set_test_skipped_();				\
+	_tinytest_set_test_skipped();				\
 	TT_EXIT_TEST_FUNCTION;					\
 	TT_STMT_END
 
-#define tt_want_(b, msg, fail)				\
+#define _tt_want(b, msg, fail)				\
 	TT_STMT_BEGIN					\
 	if (!(b)) {					\
-		tinytest_set_test_failed_();		\
+		_tinytest_set_test_failed();		\
 		TT_GRIPE(("%s",msg));			\
 		fail;					\
 	} else {					\
@@ -99,11 +99,11 @@
 
 /* Assert b, but do not stop the test if b fails.  Log msg on failure. */
 #define tt_want_msg(b, msg)			\
-	tt_want_(b, msg, );
+	_tt_want(b, msg, );
 
 /* Assert b and stop the test if b fails.  Log msg on failure. */
 #define tt_assert_msg(b, msg)			\
-	tt_want_(b, msg, TT_EXIT_TEST_FUNCTION);
+	_tt_want(b, msg, TT_EXIT_TEST_FUNCTION);
 
 /* Assert b, but do not stop the test if b fails. */
 #define tt_want(b)   tt_want_msg( (b), "want("#b")")
@@ -113,28 +113,28 @@
 #define tt_assert_test_fmt_type(a,b,str_test,type,test,printf_type,printf_fmt, \
     setup_block,cleanup_block,die_on_fail)				\
 	TT_STMT_BEGIN							\
-	type val1_ = (a);						\
-	type val2_ = (b);						\
-	int tt_status_ = (test);					\
-	if (!tt_status_ || tinytest_get_verbosity_()>1)	{		\
-		printf_type print_;					\
-		printf_type print1_;					\
-		printf_type print2_;					\
-		type value_ = val1_;					\
+	type _val1 = (type)(a);						\
+	type _val2 = (type)(b);						\
+	int _tt_status = (test);					\
+	if (!_tt_status || _tinytest_get_verbosity()>1)	{		\
+		printf_type _print;					\
+		printf_type _print1;					\
+		printf_type _print2;					\
+		type _value = _val1;					\
 		setup_block;						\
-		print1_ = print_;					\
-		value_ = val2_;						\
+		_print1 = _print;					\
+		_value = _val2;						\
 		setup_block;						\
-		print2_ = print_;					\
-		TT_DECLARE(tt_status_?"	 OK":"FAIL",			\
+		_print2 = _print;					\
+		TT_DECLARE(_tt_status?"	 OK":"FAIL",			\
 			   ("assert(%s): "printf_fmt" vs "printf_fmt,	\
-			    str_test, print1_, print2_));		\
-		print_ = print1_;					\
+			    str_test, _print1, _print2));		\
+		_print = _print1;					\
 		cleanup_block;						\
-		print_ = print2_;					\
+		_print = _print2;					\
 		cleanup_block;						\
-		if (!tt_status_) {					\
-			tinytest_set_test_failed_();			\
+		if (!_tt_status) {					\
+			_tinytest_set_test_failed();			\
 			die_on_fail ;					\
 		}							\
 	}								\
@@ -142,58 +142,43 @@
 
 #define tt_assert_test_type(a,b,str_test,type,test,fmt,die_on_fail)	\
 	tt_assert_test_fmt_type(a,b,str_test,type,test,type,fmt,	\
-	    {print_=value_;},{},die_on_fail)
-
-#define tt_assert_test_type_opt(a,b,str_test,type,test,fmt,die_on_fail)	\
-	tt_assert_test_fmt_type(a,b,str_test,type,test,type,fmt,	\
-            {print_=value_?value_:"<NULL>";},{},die_on_fail)
+	    {_print=_value;},{},die_on_fail)
 
 /* Helper: assert that a op b, when cast to type.  Format the values with
  * printf format fmt on failure. */
 #define tt_assert_op_type(a,op,b,type,fmt)				\
-	tt_assert_test_type(a,b,#a" "#op" "#b,type,(val1_ op val2_),fmt, \
+	tt_assert_test_type(a,b,#a" "#op" "#b,type,(_val1 op _val2),fmt, \
 	    TT_EXIT_TEST_FUNCTION)
 
 #define tt_int_op(a,op,b)			\
-	tt_assert_test_type(a,b,#a" "#op" "#b,long,(val1_ op val2_), \
+	tt_assert_test_type(a,b,#a" "#op" "#b,long,(_val1 op _val2), \
 	    "%ld",TT_EXIT_TEST_FUNCTION)
 
 #define tt_uint_op(a,op,b)						\
 	tt_assert_test_type(a,b,#a" "#op" "#b,unsigned long,		\
-	    (val1_ op val2_),"%lu",TT_EXIT_TEST_FUNCTION)
+	    (_val1 op _val2),"%lu",TT_EXIT_TEST_FUNCTION)
 
 #define tt_ptr_op(a,op,b)						\
-	tt_assert_test_type(a,b,#a" "#op" "#b,const void*,              \
-	    (val1_ op val2_),"%p",TT_EXIT_TEST_FUNCTION)
+	tt_assert_test_type(a,b,#a" "#op" "#b,void*,			\
+	    (_val1 op _val2),"%p",TT_EXIT_TEST_FUNCTION)
 
 #define tt_str_op(a,op,b)						\
-	tt_assert_test_type_opt(a,b,#a" "#op" "#b,const char *,		\
-	    (val1_ && val2_ && strcmp(val1_,val2_) op 0),"<%s>",	\
-	    TT_EXIT_TEST_FUNCTION)
-
-#define tt_mem_op(expr1, op, expr2, len)                                \
-  tt_assert_test_fmt_type(expr1,expr2,#expr1" "#op" "#expr2,            \
-			  const void *,                                 \
-			  (val1_ && val2_ && memcmp(val1_, val2_, len) op 0), \
-			  char *, "%s",					\
-			  { print_ = tinytest_format_hex_(value_, (len)); }, \
-			  { if (print_) free(print_); },		\
-			  TT_EXIT_TEST_FUNCTION				\
-                          );
+	tt_assert_test_type(a,b,#a" "#op" "#b,const char *,		\
+	    (strcmp(_val1,_val2) op 0),"<%s>",TT_EXIT_TEST_FUNCTION)
 
 #define tt_want_int_op(a,op,b)						\
-	tt_assert_test_type(a,b,#a" "#op" "#b,long,(val1_ op val2_),"%ld",(void)0)
+	tt_assert_test_type(a,b,#a" "#op" "#b,long,(_val1 op _val2),"%ld",(void)0)
 
 #define tt_want_uint_op(a,op,b)						\
 	tt_assert_test_type(a,b,#a" "#op" "#b,unsigned long,		\
-	    (val1_ op val2_),"%lu",(void)0)
+	    (_val1 op _val2),"%lu",(void)0)
 
 #define tt_want_ptr_op(a,op,b)						\
-  tt_assert_test_type(a,b,#a" "#op" "#b,const void*,			\
-	    (val1_ op val2_),"%p",(void)0)
+	tt_assert_test_type(a,b,#a" "#op" "#b,void*,			\
+	    (_val1 op _val2),"%p",(void)0)
 
 #define tt_want_str_op(a,op,b)						\
 	tt_assert_test_type(a,b,#a" "#op" "#b,const char *,		\
-	    (strcmp(val1_,val2_) op 0),"<%s>",(void)0)
+	    (strcmp(_val1,_val2) op 0),"<%s>",(void)0)
 
 #endif
