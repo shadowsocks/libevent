@@ -135,10 +135,10 @@
 #define HAVE_NETINET_IN_H 1
 
 /* Define if the system has openssl */
-#define HAVE_OPENSSL 1
+// #define HAVE_OPENSSL 1
 
 /* Define to 1 if you have the <openssl/bio.h> header file. */
-#define HAVE_OPENSSL_BIO_H 1
+// #define HAVE_OPENSSL_BIO_H 1
 
 /* Define to 1 if you have the `pipe' function. */
 #define HAVE_PIPE 1
