@@ -446,7 +446,7 @@
 /* #undef _EVENT_inline */
 #endif
 
-#ifdef ANDROID
+#ifdef __ANDROID__
 typedef int fd_mask;
 #endif
 
