@@ -474,7 +474,7 @@ bev_group_random_element_(struct bufferevent_rate_limit_group *group)
 #define FOREACH_RANDOM_ORDER(block)			\
 	do {						\
 		first = bev_group_random_element_(g);	\
-		for (bev = first; bev != LIST_END(&g->members); \
+		for (bev = first; bev != NULL; \
 		    bev = LIST_NEXT(bev, rate_limiting->next_in_group)) { \
 			block ;					 \
 		}						 \

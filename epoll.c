@@ -144,8 +144,10 @@ epoll_init(struct event_base *base)
 	struct epollop *epollop;
 
 #ifdef EVENT__HAVE_EPOLL_CREATE1
+#if !defined __ANDROID_API__ || __ANDROID_API__ >= 21
 	/* First, try the shiny new epoll_create1 interface, if we have it. */
 	epfd = epoll_create1(EPOLL_CLOEXEC);
+#endif
 #endif
 	if (epfd == -1) {
 		/* Initialize the kernel queue using the old interface.  (The
